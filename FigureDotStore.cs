@@ -51,11 +51,14 @@ namespace FiguresDotStore.Controllers
 	{
 		public List<Figure> Positions { get; set; }
 
+		//Здесь лучше проверять непосредственно Type, возможно была синтаксическая ошибка. 
+		//Также отсутствовала проверка на Square, который есь в списке типов.
 		public decimal GetTotal() =>
-			Positions.Select(p => p switch
+			Positions.Select(p => p.Type switch
 				{
-					Triangle => (decimal) p.GetArea() * 1.2m,
-					Circle => (decimal) p.GetArea() * 0.9m
+					"Triangle" => (decimal) p.GetArea() * 1.2m,
+					"Circle" => (decimal) p.GetArea() * 0.9m
+					"Square" => (decimal) p.GetArea()
 				})
 				.Sum();
 	}
@@ -76,8 +79,8 @@ namespace FiguresDotStore.Controllers
 		{
 			bool CheckTriangleInequality(float a, float b, float c) => a < b + c;
 			if (CheckTriangleInequality(SideA, SideB, SideC)
-			    && CheckTriangleInequality(SideB, SideA, SideC)
-			    && CheckTriangleInequality(SideC, SideB, SideA)) 
+				&& CheckTriangleInequality(SideB, SideA, SideC)
+				&& CheckTriangleInequality(SideC, SideB, SideA)) 
 				return;
 			throw new InvalidOperationException("Triangle restrictions not met");
 		}
@@ -138,36 +141,37 @@ namespace FiguresDotStore.Controllers
 		[HttpPost]
 		public async Task<ActionResult> Order(Cart cart)
 		{
+			var orderProducts  = new List<Figure>();
+
+			//Должно отработать побыстрее в силу отсутствия множества проходов по позициям в заказе.
 			foreach (var position in cart.Positions)
 			{
 				if (!FiguresStorage.CheckIfAvailable(position.Type, position.Count))
 				{
 					return new BadRequestResult();
 				}
-			}
 
-			var order = new Order
-			{
-				Positions = cart.Positions.Select(p =>
-				{
-					Figure figure = p.Type switch
+				FiguresStorage.Reserve(position.Type, position.Count);
+				
+				Figure figure = p.Type switch
 					{
 						"Circle" => new Circle(),
 						"Triangle" => new Triangle(),
 						"Square" => new Square()
 					};
-					figure.SideA = p.SideA;
-					figure.SideB = p.SideB;
-					figure.SideC = p.SideC;
-					figure.Validate();
-					return figure;
-				}).ToList()
-			};
+				
+				figure.SideA = p.SideA;
+				figure.SideB = p.SideB;
+				figure.SideC = p.SideC;
+				figure.Validate();
 
-			foreach (var position in cart.Positions)
-			{
-				FiguresStorage.Reserve(position.Type, position.Count);
+				orderProducts.Add(figure);
 			}
+
+			var order = new Order
+			{
+				Positions = orderProducts.ToList()
+			};
 
 			var result = _orderStorage.Save(order);
 
